@@ -25,10 +25,17 @@ func (c *Client) Close() error {
 	return c.conn.Close()
 }
 
-func (c *Client) Set(ctx context.Context, key, value []byte) (any, error) {
+func (c *Client) Set(ctx context.Context, key, value []byte, ttl int) (any, error) {
 	cmd := &proto.CommandSet{
 		Key:   key,
 		Value: value,
+		TTL:   ttl,
 	}
+
+	_, err := c.conn.Write(cmd.Bytes())
+	if err != nil {
+		return nil, err
+	}
+
 	return nil, nil
 }

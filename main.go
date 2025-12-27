@@ -1,14 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
-	"net"
 	"time"
 
 	"github.com/imim77/distcache/cache"
 	"github.com/imim77/distcache/client"
-	"github.com/imim77/distcache/proto"
 )
 
 func main() {
@@ -23,31 +22,27 @@ func main() {
 
 	go func() {
 		time.Sleep(time.Second * 2)
+		client, err := client.New(":3000", client.Options{})
+		if err != nil {
+			log.Fatal(err)
+		}
 		for i := 0; i < 10; i++ {
-			SendCommand()
+			SendCommand(client)
 			time.Sleep(time.Millisecond * 200)
 		}
+		client.Close()
+		time.Sleep(time.Second * 1)
 
 	}()
 	s := NewServer(opts, cache.New())
 	s.Start()
 }
 
-func SendCommand() {
-	cmd := &proto.CommandSet{
-		Key:   []byte("Foo"),
-		Value: []byte("Bar"),
-		TTL:   2,
-	}
+func SendCommand(c *client.Client) {
 
-	client, err := client.New(":3000", client.Options{})
+	_, err := c.Set(context.Background(), []byte("gg"), []byte("Anthony"), 0)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	conn, err := net.Dial("tcp", ":3000")
-	if err != nil {
-		log.Fatal(err)
-	}
-	conn.Write(cmd.Bytes())
 }
