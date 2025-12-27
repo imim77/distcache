@@ -1,4 +1,4 @@
-package main
+package proto
 
 import (
 	"bytes"
@@ -14,7 +14,8 @@ func TestParseCommand(t *testing.T) {
 		TTL:   2,
 	}
 	r := bytes.NewReader(cmd.Bytes())
-	pcmd := ParseCommand(r)
+	pcmd, err := ParseCommand(r)
+	assert.Nil(t, err)
 	assert.Equal(t, cmd, pcmd)
 }
 
@@ -23,6 +24,7 @@ func TestGetCommand(t *testing.T) {
 		Key: []byte("foo"),
 	}
 	r := bytes.NewReader(cmd.Bytes())
-	pcmd := ParseCommand(r)
+	pcmd, err := ParseCommand(r)
+	assert.Nil(t, err)
 	assert.Equal(t, cmd, pcmd)
 }

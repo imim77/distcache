@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"time"
 
 	"github.com/imim77/distcache/cache"
+	"github.com/imim77/distcache/proto"
 )
 
 type ServerOpts struct {
@@ -45,24 +47,32 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) handleConn(conn net.Conn) {
-	buff := make([]byte, 2048)
-
 	fmt.Println("connection made:", conn.RemoteAddr())
 	defer func() {
 		conn.Close()
 	}()
 	for {
-		n, err := conn.Read(buff)
+		cmd, err := proto.ParseCommand(conn)
 		if err != nil {
-			log.Printf("conn read error: %s\n", err)
+			log.Println("parse command error:", err)
 			break
 		}
-
-		msg := buff[:n]
-		s.handleCommand(conn, msg)
-		//fmt.Println(string(msg))
+		fmt.Println(cmd)
+		go s.handleCommand(conn, cmd)
 	}
 }
 
-func (s *Server) handleCommand(conn net.Conn, rawCMD []byte) {
+func (s *Server) handleCommand(conn net.Conn, cmd any) {
+	switch v := cmd.(type) {
+	case *proto.CommandSet:
+		s.handleSetCommand(conn, v)
+	case *proto.CommandGet:
+
+	}
+}
+
+func (s *Server) handleSetCommand(conn net.Conn, cmd *proto.CommandSet) error {
+	fmt.Printf("SET %s to %s\n", cmd.Key, cmd.Value)
+	return s.cache.Set(cmd.Key, cmd.Value, time.Duration(cmd.TTL))
+
 }
