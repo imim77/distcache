@@ -2,12 +2,9 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
 	"flag"
 	"fmt"
-	"io"
 	"log"
-	"time"
 
 	"github.com/imim77/distcache/cache"
 	"github.com/imim77/distcache/client"
@@ -23,23 +20,13 @@ func main() {
 		LeaderAddr: *leaderAddr,
 	}
 
-	go func() {
-		time.Sleep(time.Second * 1)
-		SendStuff()
-	}()
 	s := NewServer(opts, cache.New())
 	s.Start()
 }
 
-func randomBytes(n int) []byte {
-	buff := make([]byte, n)
-	io.ReadFull(rand.Reader, buff)
-	return buff
-}
-
 func SendStuff() {
 
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 100; i++ {
 		go func(i int) {
 			client, err := client.New(":3000", client.Options{})
 			if err != nil {

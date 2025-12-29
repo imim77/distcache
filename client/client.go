@@ -14,6 +14,10 @@ type Client struct {
 	conn net.Conn
 }
 
+func NewFromConn(conn net.Conn) *Client {
+	return &Client{conn: conn}
+}
+
 func New(endpoint string, opts Options) (*Client, error) {
 	conn, err := net.Dial("tcp", endpoint)
 	if err != nil {
@@ -61,7 +65,7 @@ func (c *Client) Set(ctx context.Context, key, value []byte, ttl int) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%+v\n", resp)
+	//fmt.Printf("%+v\n", resp)
 
 	if resp.Status != proto.StatusOK {
 		return fmt.Errorf("server responded with non OK status [%s]", resp.Status)

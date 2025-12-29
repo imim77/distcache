@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
@@ -8,7 +10,9 @@ import (
 	"time"
 
 	"github.com/imim77/distcache/cache"
+	"github.com/imim77/distcache/client"
 	"github.com/imim77/distcache/proto"
+	"go.uber.org/zap"
 )
 
 type ServerOpts struct {
@@ -19,13 +23,20 @@ type ServerOpts struct {
 
 type Server struct {
 	ServerOpts
-	cache cache.Cacher
+	members map[*client.Client]struct{}
+	cache   cache.Cacher
+	logger  *zap.SugaredLogger
 }
 
 func NewServer(opts ServerOpts, c cache.Cacher) *Server {
+	l, _ := zap.NewProduction()
+	lsugar := l.Sugar()
+
 	return &Server{
 		ServerOpts: opts,
 		cache:      c,
+		members:    make(map[*client.Client]struct{}),
+		logger:     lsugar,
 	}
 
 }
@@ -35,7 +46,15 @@ func (s *Server) Start() error {
 	if err != nil {
 		return fmt.Errorf("listen error: %s", err)
 	}
-	log.Printf("Server starting on port [%s]\n", s.ListenAddr)
+	if !s.IsLeader && len(s.LeaderAddr) != 0 {
+		go func() {
+			if err := s.dialLeader(); err != nil {
+				log.Println(err)
+			}
+		}()
+	}
+
+	s.logger.Infow("Server starting", "addr", s.ListenAddr, "leader", s.IsLeader)
 
 	for {
 		con, err := ln.Accept()
@@ -47,8 +66,20 @@ func (s *Server) Start() error {
 	}
 }
 
+func (s *Server) dialLeader() error {
+	conn, err := net.Dial("tcp", s.LeaderAddr)
+	if err != nil {
+		return fmt.Errorf("failed to dial leader [%s]", s.LeaderAddr)
+	}
+
+	s.logger.Infow("connected to leader", "addr", s.LeaderAddr)
+	binary.Write(conn, binary.LittleEndian, proto.CmdJoin)
+	s.handleConn(conn)
+	return nil
+}
+
 func (s *Server) handleConn(conn net.Conn) {
-	//fmt.Println("connection made:", conn.RemoteAddr())
+
 	defer func() {
 		conn.Close()
 	}()
@@ -61,7 +92,7 @@ func (s *Server) handleConn(conn net.Conn) {
 			log.Println("parse command error:", err)
 			break
 		}
-		fmt.Println(cmd)
+
 		go s.handleCommand(conn, cmd)
 	}
 
@@ -69,17 +100,33 @@ func (s *Server) handleConn(conn net.Conn) {
 }
 
 func (s *Server) handleCommand(conn net.Conn, cmd any) {
+
 	switch v := cmd.(type) {
 	case *proto.CommandSet:
 		s.handleSetCommand(conn, v)
 	case *proto.CommandGet:
 		s.handleGetCommand(conn, v)
-
+	case *proto.CommandJoin:
+		s.handleJoinCommand(conn, v)
 	}
 }
 
+func (s *Server) handleJoinCommand(conn net.Conn, cmd *proto.CommandJoin) error {
+	fmt.Println("member just joined the clustser:", conn.RemoteAddr())
+
+	s.members[client.NewFromConn(conn)] = struct{}{}
+	return nil
+}
+
 func (s *Server) handleSetCommand(conn net.Conn, cmd *proto.CommandSet) error {
-	//fmt.Printf("SET %s to %s\n", cmd.Key, cmd.Value)
+	log.Printf("SET %s to %s\n", cmd.Key, cmd.Value)
+	go func() {
+		for member := range s.members {
+			if err := member.Set(context.TODO(), cmd.Key, cmd.Value, cmd.TTL); err != nil {
+				log.Println("forward to member errror:", err)
+			}
+		}
+	}()
 	resp := proto.ResponseSet{}
 	if err := s.cache.Set(cmd.Key, cmd.Value, time.Duration(cmd.TTL)); err != nil {
 		resp.Status = proto.StatusError
@@ -89,6 +136,7 @@ func (s *Server) handleSetCommand(conn net.Conn, cmd *proto.CommandSet) error {
 
 	resp.Status = proto.StatusOK
 	_, err := conn.Write(resp.Bytes())
+
 	return err
 
 }
